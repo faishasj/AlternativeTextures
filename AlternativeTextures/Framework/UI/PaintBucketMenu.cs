@@ -526,9 +526,77 @@ namespace AlternativeTextures.Framework.UI
 
         public override void receiveKeyPress(Keys key)
         {
-            if (key == Keys.Escape)
+            base.receiveKeyPress(key);
+        }
+
+        public override void populateClickableComponentList()
+        {
+            int visibleTextureCount = GetVisibleTextureCount();
+            bool canGoBack = _startingRow > 0;
+            bool canGoForward = (_maxRows + _startingRow) * _texturesPerRow < filteredTextureOptions.Count;
+
+            for (int i = 0; i < visibleTextureCount; i++)
             {
-                base.receiveKeyPress(key);
+                ClickableTextureComponent texture = availableTextures[i];
+                int column = i % _texturesPerRow;
+                int downIndex = i + _texturesPerRow;
+
+                texture.leftNeighborID = column > 0 ? i - 1 : canGoBack ? backButton.myID : -1;
+                texture.rightNeighborID = column < _texturesPerRow - 1 && i + 1 < visibleTextureCount
+                    ? i + 1
+                    : canGoForward ? forwardButton.myID : -1;
+                texture.upNeighborID = i >= _texturesPerRow ? i - _texturesPerRow : -1;
+                texture.downNeighborID = downIndex < visibleTextureCount
+                    ? downIndex
+                    : canGoForward ? forwardButton.myID : -1;
+            }
+
+            allClickableComponents = availableTextures
+                .Take(visibleTextureCount)
+                .Cast<ClickableComponent>()
+                .ToList();
+
+            if (canGoBack)
+            {
+                backButton.rightNeighborID = visibleTextureCount > 0 ? availableTextures[0].myID : -1;
+                allClickableComponents.Add(backButton);
+            }
+            if (canGoForward)
+            {
+                forwardButton.leftNeighborID = visibleTextureCount > 0 ? availableTextures[visibleTextureCount - 1].myID : -1;
+                allClickableComponents.Add(forwardButton);
+            }
+            if (upperRightCloseButton is not null)
+            {
+                allClickableComponents.Add(upperRightCloseButton);
+            }
+        }
+
+        public override void snapToDefaultClickableComponent()
+        {
+            populateClickableComponentList();
+            currentlySnappedComponent = allClickableComponents.FirstOrDefault(component => component.myID >= 0);
+            if (currentlySnappedComponent is not null)
+            {
+                snapCursorToCurrentSnappedComponent();
+            }
+        }
+
+        protected int GetVisibleTextureCount()
+        {
+            int firstTextureIndex = _startingRow * _texturesPerRow;
+            return Math.Min(availableTextures.Count, Math.Max(0, filteredTextureOptions.Count - firstTextureIndex));
+        }
+
+        protected void ResetControllerFocus()
+        {
+            if (Game1.options.SnappyMenus && Game1.options.gamepadControls)
+            {
+                snapToDefaultClickableComponent();
+            }
+            else
+            {
+                populateClickableComponentList();
             }
         }
 
@@ -551,6 +619,8 @@ namespace AlternativeTextures.Framework.UI
                     var vanillaFilteredTexureOptions = cachedTextureOptions.Where(i => (i.modData[_textureOwnerKey].Contains(AlternativeTextures.DEFAULT_OWNER) && i.modData[_textureNameKey].Contains(_searchBox.Text, StringComparison.OrdinalIgnoreCase)) || (i.modData.TryGetValue(_textureDisplayNameKey, out string displayName) && string.IsNullOrEmpty(displayName) is false && displayName.Contains(_searchBox.Text, StringComparison.OrdinalIgnoreCase)));
                     filteredTextureOptions = preFilteredTextureOptions.Concat(vanillaFilteredTexureOptions).ToList();
                 }
+
+                ResetControllerFocus();
             }
         }
 
@@ -701,12 +771,14 @@ namespace AlternativeTextures.Framework.UI
             {
                 _startingRow--;
                 Game1.playSound("shiny4");
+                ResetControllerFocus();
                 return;
             }
             if ((_maxRows + _startingRow) * _texturesPerRow < this.filteredTextureOptions.Count && this.forwardButton.containsPoint(x, y))
             {
                 _startingRow++;
                 Game1.playSound("shiny4");
+                ResetControllerFocus();
                 return;
             }
         }
@@ -718,11 +790,13 @@ namespace AlternativeTextures.Framework.UI
             {
                 _startingRow--;
                 Game1.playSound("shiny4");
+                ResetControllerFocus();
             }
             else if (direction < 0 && (_maxRows + _startingRow) * _texturesPerRow < this.filteredTextureOptions.Count)
             {
                 _startingRow++;
                 Game1.playSound("shiny4");
+                ResetControllerFocus();
             }
         }
 

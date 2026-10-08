@@ -59,6 +59,8 @@ namespace AlternativeTextures.Framework.UI
             {
                 myID = 8992
             };
+
+            ResetControllerFocus();
         }
 
         private void SetEnabledTexture(ModDataDictionary modData, bool? forceEnable = null)
@@ -109,7 +111,47 @@ namespace AlternativeTextures.Framework.UI
                 Game1.player.modData[AlternativeTextures.SPRAY_CAN_RADIUS] = _tileRadius.ToString();
 
                 base.exitThisMenu();
+                return;
             }
+
+            base.receiveKeyPress(key);
+        }
+
+        public override void populateClickableComponentList()
+        {
+            base.populateClickableComponentList();
+
+            if (radiusSubtractButton is null || radiusAddButton is null || allButton is null || noneButton is null)
+            {
+                return;
+            }
+
+            int visibleTextureCount = GetVisibleTextureCount();
+            int textureNeighborId = visibleTextureCount > 0 ? availableTextures[visibleTextureCount - 1].myID : -1;
+
+            radiusSubtractButton.leftNeighborID = textureNeighborId;
+            radiusSubtractButton.rightNeighborID = radiusAddButton.myID;
+            radiusSubtractButton.downNeighborID = allButton.myID;
+
+            radiusAddButton.leftNeighborID = radiusSubtractButton.myID;
+            radiusAddButton.downNeighborID = allButton.myID;
+
+            allButton.leftNeighborID = textureNeighborId;
+            allButton.upNeighborID = radiusSubtractButton.myID;
+            allButton.downNeighborID = noneButton.myID;
+
+            noneButton.leftNeighborID = textureNeighborId;
+            noneButton.upNeighborID = allButton.myID;
+
+            for (int i = _texturesPerRow - 1; i < visibleTextureCount; i += _texturesPerRow)
+            {
+                availableTextures[i].rightNeighborID = radiusSubtractButton.myID;
+            }
+
+            allClickableComponents.Add(radiusSubtractButton);
+            allClickableComponents.Add(radiusAddButton);
+            allClickableComponents.Add(allButton);
+            allClickableComponents.Add(noneButton);
         }
 
         public override void receiveLeftClick(int x, int y, bool playSound = false)
@@ -158,12 +200,14 @@ namespace AlternativeTextures.Framework.UI
             {
                 _startingRow--;
                 Game1.playSound("shiny4");
+                ResetControllerFocus();
                 return;
             }
             if ((_maxRows + _startingRow) * _texturesPerRow < this.filteredTextureOptions.Count && this.forwardButton.containsPoint(x, y))
             {
                 _startingRow++;
                 Game1.playSound("shiny4");
+                ResetControllerFocus();
                 return;
             }
 

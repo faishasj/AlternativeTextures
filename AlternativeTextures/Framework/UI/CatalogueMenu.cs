@@ -211,31 +211,7 @@ namespace AlternativeTextures.Framework.UI
 
         private void UpdateSaleButtonNeighbors()
         {
-            ClickableComponent lastValidButton = _objectButtons[0];
-            for (int i = 0; i < _objectButtons.Count; i++)
-            {
-                ClickableComponent button = _objectButtons[i];
-                button.upNeighborImmutable = true;
-                button.downNeighborImmutable = true;
-                button.upNeighborID = ((i > 0) ? (i + 3546 - 1) : (-7777));
-                button.downNeighborID = ((i < 3 && i < _currentlyDisplayedObjects.Count - 1) ? (i + 3546 + 1) : (-7777));
-
-                if (i >= _currentlyDisplayedObjects.Count)
-                {
-                    if (button == base.currentlySnappedComponent)
-                    {
-                        base.currentlySnappedComponent = lastValidButton;
-                        if (Game1.options.SnappyMenus)
-                        {
-                            base.snapCursorToCurrentSnappedComponent();
-                        }
-                    }
-                }
-                else
-                {
-                    lastValidButton = button;
-                }
-            }
+            populateClickableComponentList();
         }
 
         private void RepositionTabs()
@@ -336,6 +312,7 @@ namespace AlternativeTextures.Framework.UI
         {
             _startingRow = 0;
             _selectedObject = selectedObject;
+            _isDisplayingAlternativeTextures = _selectedObject is not null;
 
             if (_selectedObject is null)
             {
@@ -343,6 +320,7 @@ namespace AlternativeTextures.Framework.UI
                 _searchBox.Text = _cachedTextValue;
                 _previousTextValue = string.Empty;
 
+                ResetControllerFocus();
                 return;
             }
             else
@@ -449,6 +427,8 @@ namespace AlternativeTextures.Framework.UI
                     });
                 }
             }
+
+            ResetControllerFocus();
         }
 
         public override void receiveKeyPress(Keys key)
@@ -463,7 +443,190 @@ namespace AlternativeTextures.Framework.UI
                 {
                     base.exitThisMenu();
                 }
+
+                return;
             }
+
+            base.receiveKeyPress(key);
+        }
+
+        public override void populateClickableComponentList()
+        {
+            int selectedTabId = _tabButtons[_currentTabIndex].myID;
+            int firstContentId = -1;
+
+            allClickableComponents = _tabButtons
+                .Cast<ClickableComponent>()
+                .ToList();
+
+            if (_isDisplayingAlternativeTextures)
+            {
+                int visibleTextureCount = GetVisibleTextureCount();
+                firstContentId = visibleTextureCount > 0 ? _alternativeTextureButtons[0].myID : -1;
+
+                for (int i = 0; i < visibleTextureCount; i++)
+                {
+                    ClickableTextureComponent texture = _alternativeTextureButtons[i];
+                    int column = i % _texturesPerRow;
+                    int downIndex = i + _texturesPerRow;
+
+                    texture.leftNeighborID = column > 0 ? i - 1 : selectedTabId;
+                    texture.rightNeighborID = column < _texturesPerRow - 1 && i + 1 < visibleTextureCount ? i + 1 : -1;
+                    texture.upNeighborID = i >= _texturesPerRow ? i - _texturesPerRow : -1;
+                    texture.downNeighborID = downIndex < visibleTextureCount ? downIndex : -1;
+                }
+
+                allClickableComponents.AddRange(_alternativeTextureButtons.Take(visibleTextureCount));
+            }
+            else
+            {
+                int visibleObjectCount = GetVisibleObjectCount();
+                firstContentId = visibleObjectCount > 0 ? _objectButtons[0].myID : -1;
+
+                for (int i = 0; i < visibleObjectCount; i++)
+                {
+                    ClickableComponent button = _objectButtons[i];
+                    button.leftNeighborID = selectedTabId;
+                    button.rightNeighborID = -1;
+                    button.upNeighborID = i > 0 ? _objectButtons[i - 1].myID : -1;
+                    button.downNeighborID = i + 1 < visibleObjectCount ? _objectButtons[i + 1].myID : -1;
+                }
+
+                allClickableComponents.AddRange(_objectButtons.Take(visibleObjectCount));
+            }
+
+            for (int i = 0; i < _tabButtons.Count; i++)
+            {
+                _tabButtons[i].upNeighborID = i > 0 ? _tabButtons[i - 1].myID : -1;
+                _tabButtons[i].downNeighborID = i + 1 < _tabButtons.Count ? _tabButtons[i + 1].myID : -1;
+                _tabButtons[i].rightNeighborID = firstContentId;
+            }
+        }
+
+        public override void snapToDefaultClickableComponent()
+        {
+            populateClickableComponentList();
+
+            if (_isDisplayingAlternativeTextures && GetVisibleTextureCount() > 0)
+            {
+                currentlySnappedComponent = _alternativeTextureButtons[0];
+            }
+            else if (!_isDisplayingAlternativeTextures && GetVisibleObjectCount() > 0)
+            {
+                currentlySnappedComponent = _objectButtons[0];
+            }
+            else
+            {
+                currentlySnappedComponent = _tabButtons[_currentTabIndex];
+            }
+
+            snapCursorToCurrentSnappedComponent();
+        }
+
+        public override void applyMovementKey(int direction)
+        {
+            if (currentlySnappedComponent is not null)
+            {
+                if (_isDisplayingAlternativeTextures && HandleTexturePageNavigation(direction))
+                {
+                    return;
+                }
+                if (!_isDisplayingAlternativeTextures && HandleObjectPageNavigation(direction))
+                {
+                    return;
+                }
+            }
+
+            base.applyMovementKey(direction);
+        }
+
+        private bool HandleTexturePageNavigation(int direction)
+        {
+            int visibleTextureCount = GetVisibleTextureCount();
+            int selectedIndex = _alternativeTextureButtons.IndexOf(currentlySnappedComponent as ClickableTextureComponent);
+            if (selectedIndex < 0 || visibleTextureCount == 0)
+            {
+                return false;
+            }
+
+            if (direction == 0 && selectedIndex < _texturesPerRow && _startingRow > 0)
+            {
+                _startingRow--;
+            }
+            else if (direction == 2
+                && selectedIndex + _texturesPerRow >= visibleTextureCount
+                && (_maxRows + _startingRow) * _texturesPerRow < _currentlyDisplayedTextures.Count)
+            {
+                _startingRow++;
+            }
+            else
+            {
+                return false;
+            }
+
+            Game1.playSound("shiny4");
+            populateClickableComponentList();
+            FocusComponent(_alternativeTextureButtons[Math.Min(selectedIndex, GetVisibleTextureCount() - 1)]);
+            return true;
+        }
+
+        private bool HandleObjectPageNavigation(int direction)
+        {
+            int visibleObjectCount = GetVisibleObjectCount();
+            int selectedIndex = _objectButtons.IndexOf(currentlySnappedComponent);
+            if (selectedIndex < 0 || visibleObjectCount == 0)
+            {
+                return false;
+            }
+
+            if (direction == 0 && selectedIndex == 0 && _currentObjectIndex > 0)
+            {
+                _currentObjectIndex--;
+            }
+            else if (direction == 2
+                && selectedIndex == visibleObjectCount - 1
+                && _currentObjectIndex + visibleObjectCount < _currentlyDisplayedObjects.Count)
+            {
+                _currentObjectIndex++;
+            }
+            else
+            {
+                return false;
+            }
+
+            Game1.playSound("shiny4");
+            populateClickableComponentList();
+            FocusComponent(_objectButtons[selectedIndex]);
+            return true;
+        }
+
+        private int GetVisibleObjectCount()
+        {
+            return Math.Min(PAGE_SIZE, Math.Max(0, _currentlyDisplayedObjects.Count - _currentObjectIndex));
+        }
+
+        private int GetVisibleTextureCount()
+        {
+            int firstTextureIndex = _startingRow * _texturesPerRow;
+            return Math.Min(_alternativeTextureButtons.Count, Math.Max(0, _currentlyDisplayedTextures.Count - firstTextureIndex));
+        }
+
+        private void ResetControllerFocus()
+        {
+            if (Game1.options.SnappyMenus && Game1.options.gamepadControls)
+            {
+                snapToDefaultClickableComponent();
+            }
+            else
+            {
+                populateClickableComponentList();
+            }
+        }
+
+        private void FocusComponent(ClickableComponent component)
+        {
+            currentlySnappedComponent = component;
+            snapCursorToCurrentSnappedComponent();
         }
 
         public override void receiveLeftClick(int x, int y, bool playSound = false)
@@ -486,11 +649,7 @@ namespace AlternativeTextures.Framework.UI
                     SetTabFilter(k);
                     SetTextFilter(_searchBox.Text);
                     Game1.playSound("shwip");
-
-                    if (Game1.options.snappyMenus && Game1.options.gamepadControls)
-                    {
-                        this.snapCursorToCurrentSnappedComponent();
-                    }
+                    ResetControllerFocus();
                 }
             }
 
@@ -575,7 +734,7 @@ namespace AlternativeTextures.Framework.UI
             int offset = direction > 0 ? 1 : -1;
 
             _currentObjectIndex = Math.Max(0, _currentObjectIndex - offset);
-            _currentObjectIndex = Math.Min(_currentObjectIndex, _currentlyDisplayedObjects.Count - PAGE_SIZE);
+            _currentObjectIndex = Math.Min(_currentObjectIndex, Math.Max(0, _currentlyDisplayedObjects.Count - PAGE_SIZE));
 
             if (direction > 0 && _startingRow > 0)
             {
@@ -588,7 +747,6 @@ namespace AlternativeTextures.Framework.UI
 
             Game1.playSound("shiny4");
 
-            //this.setScrollBarToCurrentIndex();
             UpdateSaleButtonNeighbors();
         }
 
@@ -664,6 +822,7 @@ namespace AlternativeTextures.Framework.UI
             {
                 SetTabFilter(_currentTabIndex);
                 SetTextFilter(_searchBox.Text);
+                ResetControllerFocus();
             }
 
             // Adjust alphas
